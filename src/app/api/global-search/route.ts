@@ -192,8 +192,8 @@ ANTI-KEYWORD BIAS: Match the ARTWORK. Every item in 'candidates' MUST be a compl
 
     if (!data) {
       // Fallback to Ollama
-      const OLLAMA_URL = "http://localhost:11434/api/generate";
-      const MODEL = "llama3.2:1b";
+      const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434/api/generate";
+      const MODEL = process.env.OLLAMA_MODEL || "llama3.2:1b";
 
       let systemPrompt = "";
       let userPrompt = "";

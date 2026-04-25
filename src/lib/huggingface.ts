@@ -1,7 +1,7 @@
 // Hugging Face Inference API client for image captioning
 // Uses BLIP-2 or LLaVA for high-quality image descriptions
 
-const HUGGINGFACE_API_URL = 'https://api-inference.huggingface.co/models/Salesforce/blip2-opt-2.7b'; // You can swap to LLaVA or other models if needed
+const HUGGINGFACE_API_URL = process.env.HUGGINGFACE_API_URL || 'https://api-inference.huggingface.co/models/Salesforce/blip2-opt-2.7b'; // You can swap to LLaVA or other models if needed
 
 export async function describeImageHuggingFace(imageUrl: string, apiKey: string): Promise<string> {
   try {

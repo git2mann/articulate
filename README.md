@@ -49,20 +49,29 @@ To deploy a local instance of Articulate, you must acquire the following API cre
 2. **Groq API:** Required for high-speed visual inference.
 3. **Google AI Studio:** Required for Gemini API access as a vision fallback.
 
-> **Technical Note on Spotify Authentication:** The Spotify Web API requires a secure HTTPS connection for redirect URIs. For local development, it is highly recommended to use a tunneling service like **ngrok** to provide a public HTTPS URL (e.g., `https://your-subdomain.ngrok-free.app`). Ensure this URL is added to the "Redirect URIs" section of your Spotify Developer Dashboard and configured as your `NEXTAUTH_URL`.
+> **Technical Note on Spotify Authentication:** The Spotify Web API requires a secure HTTPS connection for redirect URIs. For local development, it is highly recommended to use a tunneling service like **ngrok** to provide a public HTTPS URL (e.g., `https://your-subdomain.ngrok-free.app`). 
+> 
+> **CRITICAL:** The URL you use for `NEXTAUTH_URL` must match **exactly** with the "Redirect URIs" configured in your [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). For NextAuth, the redirect URI will typically be `${NEXTAUTH_URL}/api/auth/callback/spotify`. If these do not match, authentication will fail with a `redirect_uri_mismatch` error.
 
 ### Environment Configuration
 Create a `.env.local` file in the project root:
 ```env
+# Deployment
+APP_URL=https://your-subdomain.ngrok-free.app
+NEXTAUTH_URL=https://your-subdomain.ngrok-free.app
+
 # Spotify Integration
 SPOTIFY_CLIENT_ID=your_client_id
 SPOTIFY_CLIENT_SECRET=your_client_secret
 NEXTAUTH_SECRET=a_secure_random_string
-NEXTAUTH_URL=http://localhost:3000
 
 # Vision Providers
 GROQ_API_KEY=your_groq_key
 GOOGLE_AI_API_KEY=your_gemini_key
+
+# Optional: Local Inference
+OLLAMA_URL=http://localhost:11434/api/generate
+OLLAMA_MODEL=llama3.2:1b
 ```
 
 ### Installation
