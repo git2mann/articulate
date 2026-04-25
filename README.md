@@ -49,6 +49,8 @@ To deploy a local instance of Articulate, you must acquire the following API cre
 2. **Groq API:** Required for high-speed visual inference.
 3. **Google AI Studio:** Required for Gemini API access as a vision fallback.
 
+> **Technical Note on Spotify Authentication:** The Spotify Web API requires a secure HTTPS connection for redirect URIs. For local development, it is highly recommended to use a tunneling service like **ngrok** to provide a public HTTPS URL (e.g., `https://your-subdomain.ngrok-free.app`). Ensure this URL is added to the "Redirect URIs" section of your Spotify Developer Dashboard and configured as your `NEXTAUTH_URL`.
+
 ### Environment Configuration
 Create a `.env.local` file in the project root:
 ```env
@@ -76,10 +78,23 @@ npm run dev
 4. **Refine:** If the search space is large, provide additional visual details as prompted by the AI.
 5. **Play:** Once a match is confirmed, the application provides a direct link to launch the track in the Spotify player.
 
-## Technical Reflection and Roadmap
-- **The Challenge:** Mapping subjective visual "vibes" to a structured mathematical space is non-trivial. The current implementation uses a hybrid approach of vision-to-text descriptions followed by text-to-vector embeddings.
-- **Current Constraints:** The initial indexing phase is limited by provider-side rate limits for image analysis. This is a one-time "cold start" cost per user library.
-- **Future Vision:** Integration of **CLIP** (Contrastive Language-Image Pre-training) to enable direct image-to-text embedding comparisons, bypassing the need for textual descriptions and increasing accuracy for abstract or non-literal artwork.
+## Design Philosophy
+Articulate is built on the principle of **Augmented Intelligence**. Unlike traditional search engines that require the user to adapt to the machine's textual requirements, Articulate adapts to the user's natural cognitive patterns. The project prioritizes:
+- **Human-Centric Retrieval:** Designing for the way humans remember, not just how databases store.
+- **Edge-Heavy Computation:** Leveraging the user's local hardware (via Transformers.js) to minimize latency and maximize privacy.
+- **Transparent Logic:** Providing visual descriptions alongside results so the "reasoning" of the neural engine is always clear to the user.
+
+## Future Roadmap
+
+### Short-Term: Performance and Accuracy
+- **CLIP Integration:** Transitioning to **Contrastive Language-Image Pre-training** to allow direct comparisons between user text and image features, eliminating the need for intermediary text descriptions.
+- **Batch Vision Processing:** Implementing a worker-based queue for library indexing to handle 1,000+ song libraries more efficiently within API rate limits.
+- **WebGPU Acceleration:** Optimizing local embedding generation using WebGPU to provide near-instantaneous similarity calculations on larger libraries.
+
+### Long-Term: New Modalities
+- **Audio-Visual Synesthesia:** Integrating Spotify's audio features (Tempo, Key, Energy) into the vector space. This would allow users to search for "That fast, energetic song with the red cover," merging two sensory memories into one query.
+- **Cross-Platform Support:** Expanding the "Neural Mapping" architecture to include Apple Music, Tidal, and local FLAC/MP3 libraries.
+- **AR Crate Digging:** A concept for an Augmented Reality interface where users can "walk" through a virtual gallery of their music library, organized spatially by visual similarity rather than alphabetically.
 
 ---
-*Lovingly developed as a small functional prototype for a big personal problem*
+*Initially developed as a functional prototype for the Bolt Product Builder Graduate Programme Interview.*
