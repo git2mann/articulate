@@ -7,9 +7,10 @@ import { CoverObject, VisualTags } from '@/types';
 export async function fetchUserAlbums(accessToken: string): Promise<CoverObject[]> {
   const allItems: any[] = [];
   const limit = 50;
-  
-  // Fetch up to 150 liked songs (3 pages)
-  for (let offset = 0; offset < 150; offset += limit) {
+  let offset = 0;
+  let total = Infinity;
+
+  while (offset < total) {
     try {
       const response = await fetch(`https://api.spotify.com/v1/me/tracks?limit=${limit}&offset=${offset}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -19,11 +20,14 @@ export async function fetchUserAlbums(accessToken: string): Promise<CoverObject[
         console.warn(`Spotify API Liked Songs failed: ${response.status}`);
         break;
       }
-      
+
       const data = await response.json();
       if (!data.items || data.items.length === 0) break;
-      
+
       allItems.push(...data.items);
+      total = data.total;
+      offset += limit;
+
       if (data.items.length < limit) break; 
     } catch (e) {
       console.error("Fetch Liked Songs failed:", e);
@@ -47,8 +51,8 @@ export async function fetchUserAlbums(accessToken: string): Promise<CoverObject[
     image_url: album.images[0]?.url || '',
     album_name: album.name,
     artist: album.artists[0]?.name || 'Unknown Artist',
-    tracks: [], 
-    embedding: [], 
+    tracks: [],
+    embedding: [],
     description: `Album "${album.name}" by ${album.artists[0]?.name}`,
     tags: {
       colors: ['unknown'],
@@ -56,10 +60,11 @@ export async function fetchUserAlbums(accessToken: string): Promise<CoverObject[
       style: 'photograph',
       objects: [],
       composition: 'centered',
-      mood: 'unknown',
+      mood: 'unknown'
     }
   }));
 }
+
 
 /**
  * Get a Spotify access token using Client Credentials flow (for public data).

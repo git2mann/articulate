@@ -1,19 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-  --font-mono: "SF Mono", "SFProMono-Regular", "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "SFMono-Regular", monospace;
 }
 
 :root {
-  --background: #020202;
-  --foreground: #ffffff;
-  /* Liquid Glass Palette */
-  --glass-bg: rgba(15, 15, 15, 0.4);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-highlight: rgba(255, 255, 255, 0.12);
-  --accent-emerald: #10b981;
-  --accent-indigo: #6366f1;
+  --background: #e8e4db; /* Bauhaus Off-White */
+  --foreground: #000000;
+  
+  /* Bauhaus Primary Palette */
+  --bauhaus-red: #d32f2f;
+  --bauhaus-blue: #1976d2;
+  --bauhaus-yellow: #fbc02d;
+  --bauhaus-black: #000000;
+  --bauhaus-white: #ffffff;
+  --bauhaus-grey: #9e9e9e;
+  
+  --notion-border: #000000;
 }
 
 body {
@@ -21,192 +25,120 @@ body {
   background: var(--background);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  letter-spacing: -0.01em;
-  overflow-x: hidden;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
-/* --- Liquid Background Engine --- */
+/* --- Bauhaus Geometric Primitives --- */
 
-.liquid-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: #000;
-  overflow: hidden;
-}
-
-.blob {
-  position: absolute;
-  width: 800px;
-  height: 800px;
-  background: radial-gradient(circle, var(--color, #10b981) 0%, transparent 70%);
-  filter: blur(100px);
-  opacity: 0.15;
-  animation: liquid 20s infinite alternate;
-}
-
-.blob-1 {
-  --color: #10b981;
-  top: -200px;
-  right: -100px;
-  animation-delay: 0s;
-}
-
-.blob-2 {
-  --color: #6366f1;
-  bottom: -300px;
-  left: -200px;
-  animation-duration: 25s;
-  animation-delay: -5s;
-}
-
-.blob-3 {
-  --color: #ec4899;
-  top: 40%;
-  left: 30%;
-  width: 600px;
-  height: 600px;
-  opacity: 0.08;
-  animation-duration: 30s;
-}
-
-@keyframes liquid {
-  0% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(100px, 150px) scale(1.1); }
-  66% { transform: translate(-50px, 200px) scale(0.9); }
-  100% { transform: translate(0, 0) scale(1); }
-}
-
-.noise {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  opacity: 0.04;
-  pointer-events: none;
-  mix-blend-mode: overlay;
-}
-
-/* --- Liquid Glass Primitives --- */
-
-.liquid-glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(32px) saturate(200%);
-  -webkit-backdrop-filter: blur(32px) saturate(200%);
-  border: 1px solid var(--glass-border);
-  box-shadow: 
-    0 8px 32px 0 rgba(0, 0, 0, 0.8),
-    inset 0 0 0 1px var(--glass-highlight);
-  border-radius: 32px;
-  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.liquid-glass:hover {
-  background: rgba(25, 25, 25, 0.5);
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
-}
-
-.glass-input {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(16px);
-  border-radius: 24px;
-  transition: all 0.4s ease;
-}
-
-.glass-input:focus {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--accent-emerald);
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
-}
-
-.glass-card {
+.bauhaus-card {
+  background: var(--bauhaus-white);
+  border: 3px solid var(--bauhaus-black);
+  border-radius: 0px; /* Sharp edges */
+  transition: all 150ms ease-out;
   position: relative;
-  background: rgba(10, 10, 10, 0.4);
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 40px;
-  padding: 32px;
-  overflow: hidden;
-  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.glass-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 100%);
-  pointer-events: none;
+.bauhaus-card:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: 8px 8px 0px var(--bauhaus-black);
 }
 
-.glass-card:hover {
-  transform: scale(1.02) translateY(-4px);
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(15, 15, 15, 0.5);
-  box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.6);
-}
-
-/* --- Typography & Buttons --- */
-
-.text-fluid-gradient {
-  background: linear-gradient(to bottom right, #fff 30%, rgba(255,255,255,0.4));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.btn-glass {
-  background: #fff;
-  color: #000;
+.bauhaus-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 24px;
+  border: 3px solid var(--bauhaus-black);
+  border-radius: 0px;
   font-weight: 800;
-  border-radius: 20px;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
+  text-transform: uppercase;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  transition: all 100ms steps(2);
+  cursor: pointer;
+  background: var(--bauhaus-white);
 }
 
-.btn-glass:hover {
-  transform: scale(1.03) translateY(-2px);
-  box-shadow: 0 8px 30px rgba(255, 255, 255, 0.25);
+.bauhaus-button:hover {
+  background: var(--bauhaus-black);
+  color: var(--bauhaus-white);
 }
 
-.btn-glass:active {
-  transform: scale(0.97);
+.bauhaus-button-primary {
+  background: var(--bauhaus-blue);
+  color: var(--bauhaus-white);
 }
 
-/* --- Utilities --- */
-
-.animate-float {
-  animation: float 6s ease-in-out infinite;
+.bauhaus-button-red {
+  background: var(--bauhaus-red);
+  color: var(--bauhaus-white);
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
+.bauhaus-button-yellow {
+  background: var(--bauhaus-yellow);
+  color: var(--bauhaus-black);
 }
 
-.shimmer {
-  position: relative;
-  overflow: hidden;
+/* --- Typography --- */
+
+.bauhaus-h1 {
+  font-size: 80px;
+  font-weight: 900;
+  line-height: 0.9;
+  text-transform: uppercase;
+  letter-spacing: -0.05em;
+  border-left: 12px solid var(--bauhaus-black);
+  padding-left: 20px;
 }
 
-.shimmer::after {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    45deg,
-    transparent 45%,
-    rgba(255, 255, 255, 0.05) 50%,
-    transparent 55%
-  );
-  animation: shimmer 4s infinite;
+.bauhaus-h2 {
+  font-size: 40px;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-bottom: 0.5em;
 }
 
-@keyframes shimmer {
-  0% { transform: translate(-30%, -30%); }
-  100% { transform: translate(30%, 30%); }
+/* --- Layout Elements --- */
+
+.bauhaus-grid-line {
+  border-top: 3px solid var(--bauhaus-black);
+}
+
+.bauhaus-vertical-line {
+  border-left: 3px solid var(--bauhaus-black);
+}
+
+.bauhaus-circle {
+  border-radius: 9999px;
+  border: 3px solid var(--bauhaus-black);
+}
+
+.bauhaus-square {
+  aspect-ratio: 1/1;
+  border: 3px solid var(--bauhaus-black);
+}
+
+/* --- Mobile --- */
+
+@media (max-width: 768px) {
+  .bauhaus-h1 { font-size: 48px; }
+  .bauhaus-h2 { font-size: 28px; }
+}
+
+/* Scrollbar Bauhaus Style */
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bauhaus-black);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bauhaus-red);
+  border: 2px solid var(--bauhaus-black);
+}
+
+::selection {
+  background: var(--bauhaus-yellow);
+  color: var(--bauhaus-black);
 }

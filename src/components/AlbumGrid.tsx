@@ -3,6 +3,7 @@
 import { CoverObject } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
+import { useTheme } from './ThemeContext';
 
 
 interface AlbumGridProps {
@@ -12,6 +13,7 @@ interface AlbumGridProps {
 
 export default function AlbumGrid({ covers, confidences }: AlbumGridProps) {
   const [modalCover, setModalCover] = useState<CoverObject | null>(null);
+  const { setThemeFromImage, resetTheme } = useTheme();
 
   return (
     <>
@@ -19,62 +21,91 @@ export default function AlbumGrid({ covers, confidences }: AlbumGridProps) {
         <AnimatePresence mode="popLayout">
           {covers.map((cover, idx) => {
             if (!cover) return null;
+            // Use cover_id if available, fallback to index to ensure uniqueness
+            const uniqueKey = cover.cover_id ? `${cover.cover_id}-${idx}` : `album-${idx}`;
             return (
               <motion.div
-                key={cover.cover_id}
+                key={uniqueKey}
                 layout
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
+                exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ 
-                  duration: 0.5, 
-                  ease: [0.2, 0.8, 0.2, 1]
+                  duration: 0.3, 
+                  ease: "easeOut"
                 }}
-                className="group apple-card cursor-pointer shadow-sm"
+                className="group bauhaus-card cursor-pointer !bg-white"
                 onClick={() => setModalCover(cover)}
+                onMouseEnter={() => setThemeFromImage(cover.image_url)}
+                onMouseLeave={resetTheme}
               >
-                <div className="aspect-square overflow-hidden bg-[#1c1c1e] relative">
+                <div className="aspect-square overflow-hidden bg-black relative border-b-[3px] border-black">
                   <img
                     src={cover.image_url}
                     alt={`${cover.album_name} by ${cover.artist}`}
-                    className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-105 group-hover:brightness-110 ${!cover.tags || Object.keys(cover.tags).length === 0 || !cover.tags.colors || cover.tags.colors.length === 0 || cover.tags.colors[0] === 'unknown' ? 'grayscale opacity-40' : ''}`}
+                    className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${!cover.tags || Object.keys(cover.tags).length === 0 || !cover.tags.colors || cover.tags.colors.length === 0 || cover.tags.colors[0] === 'unknown' ? 'grayscale opacity-50' : ''}`}
                   />
                   {(!cover.tags || Object.keys(cover.tags).length === 0 || !cover.tags.colors || cover.tags.colors.length === 0 || cover.tags.colors[0] === 'unknown') && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="px-3 py-1 bg-black/60 backdrop-blur-md rounded-full border border-white/10">
-                        <p className="text-[9px] font-black text-white/60 uppercase tracking-widest">Pending Analysis</p>
+                      <div className="px-3 py-1 bg-[#fbc02d] border-[2px] border-black">
+                        <p className="text-[8px] font-black text-black uppercase tracking-widest leading-none">PENDING ANALYSIS</p>
                       </div>
                     </div>
                   )}
                   {typeof confidences !== 'undefined' && confidences[idx] !== undefined && (
-                    <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                      Confidence: {(confidences[idx] * 100).toFixed(0)}%
+                    <div className="absolute top-0 right-0 bg-[#1976d2] text-white text-[8px] font-black px-2 py-1 border-l-[3px] border-b-[3px] border-black uppercase">
+                      {(confidences[idx] * 100).toFixed(0)}% MATCH
                     </div>
                   )}
                 </div>
-                <div className="p-4 space-y-1 bg-gradient-to-b from-transparent to-black/20">
-                  <h3 className="text-white font-semibold text-[15px] leading-tight truncate tracking-tight">
+                <div className="p-4 space-y-1">
+                  <h3 className="text-black font-black text-sm uppercase leading-tight truncate tracking-tighter">
                     {cover.album_name}
                   </h3>
-                  <p className="text-gray-400 text-xs font-medium truncate uppercase tracking-widest opacity-80">
+                  <p className="text-black/40 text-[9px] font-bold truncate uppercase tracking-widest">
                     {cover.artist}
                   </p>
                 </div>
-                {/* Glossy Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                {/* Geometric Overlay */}
+                <div className="absolute inset-0 border-[6px] border-[#d32f2f] opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none" />
               </motion.div>
             );
           })}
         </AnimatePresence>
       </div>
       {modalCover && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setModalCover(null)}>
-          <div className="bg-[#18181b] rounded-2xl p-8 max-w-md w-full relative" onClick={e => e.stopPropagation()}>
-            <button className="absolute top-3 right-3 text-gray-400 hover:text-white" onClick={() => setModalCover(null)}>&times;</button>
-            <h2 className="text-xl font-bold text-white mb-2">Model Description</h2>
-            <p className="text-gray-200 mb-4">{modalCover.description || 'No description available.'}</p>
-            <img src={modalCover.image_url} alt={modalCover.album_name} className="w-full rounded-lg mb-2" />
-            <div className="text-xs text-gray-400">{modalCover.album_name} by {modalCover.artist}</div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setModalCover(null)}>
+          <div className="bg-[#e8e4db] border-[6px] border-black p-12 max-w-2xl w-full relative animate-in" onClick={e => e.stopPropagation()}>
+            <button 
+              className="absolute -top-6 -right-6 w-12 h-12 bg-[#d32f2f] text-white border-[4px] border-black flex items-center justify-center font-black text-2xl hover:scale-110 transition-transform" 
+              onClick={() => setModalCover(null)}
+            >
+              ×
+            </button>
+            <div className="flex flex-col md:flex-row gap-8">
+              <div className="w-full md:w-64 aspect-square border-[6px] border-black shrink-0 relative bg-black">
+                <img src={modalCover.image_url} alt={modalCover.album_name} className="w-full h-full object-cover" />
+                <div className="absolute -bottom-4 -left-4 bg-[#fbc02d] text-black px-4 py-2 font-black text-[10px] uppercase border-[3px] border-black shadow-[4px_4px_0px_black]">
+                  MECHANICAL DATA
+                </div>
+              </div>
+              <div className="flex-1 space-y-6">
+                <div>
+                  <h2 className="text-4xl font-black uppercase tracking-tighter leading-none mb-2">{modalCover.album_name}</h2>
+                  <p className="text-xl font-bold uppercase text-[#1976d2]">{modalCover.artist}</p>
+                </div>
+                <div className="bg-white border-[3px] border-black p-6">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 opacity-30">Neural Fingerprint</h4>
+                  <p className="text-sm font-bold uppercase leading-tight italic">&quot;{modalCover.description || 'No description available.'}&quot;</p>
+                </div>
+                <button 
+                  onClick={() => setModalCover(null)}
+                  className="bauhaus-button w-full bg-black text-white hover:bg-[#1976d2]"
+                >
+                  CLOSE ARCHIVE
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
