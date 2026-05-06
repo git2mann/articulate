@@ -1,7 +1,7 @@
 # Articulate
 
 ## Overview
-Articulate (*Music, articulated through art*) is an AI-powered semantic search engine for personal music libraries. It solves a fundamental friction point for visual-oriented listeners: the inability to retrieve music based on the memory of its artwork. By bridging the gap between visual recall and digital metadata, Articulate allows users to find songs in their Spotify library by describing the aesthetic, mood, and composition of album covers.
+Articulate (Music, *"articulated"* through art) is an AI-powered semantic search engine for personal music libraries. It solves a fundamental friction point for visual-oriented listeners: the inability to retrieve music based on the memory of its artwork. By bridging the gap between visual recall and digital metadata, Articulate allows users to find songs in their Spotify library by describing the aesthetic, mood, and composition of album covers.
 
 ## The Problem
 For many (myself included!), music is indexed visually. When a listener recalls a track, the mind often surfaces the colors, imagery, and "vibe" of the cover art before the artist's name or song title. Traditional music platforms are built exclusively for factual metadata retrieval (Artist, Album, Title), creating a "discovery gap." If a user cannot recall the text, they are relegated to manually sifting through thousands of tracks; This is a tedious and inefficient process, in my experience. It disconnects the user from their own music history, so I decided to do something about it.
