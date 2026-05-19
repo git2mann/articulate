@@ -30,16 +30,25 @@ export async function saveLibraryToDB(library: any[]) {
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
 
-  // Clear existing to ensure sync is clean
-  store.clear();
-
   for (const item of library) {
-    store.add(item);
+    store.put(item);
   }
 
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve(true);
     tx.onerror = () => reject("Failed to save library");
+  });
+}
+
+export async function clearLibraryFromDB() {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  store.clear();
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject("Failed to clear library");
   });
 }
 

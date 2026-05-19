@@ -26,6 +26,7 @@ export interface CoverObject {
   embedding: number[];
   tags: VisualTags;
   description: string;
+  visualDescription?: string; // Optional compatibility field
   spotify_url?: string;
   spotify_uri?: string;
 }

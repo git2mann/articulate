@@ -3,7 +3,7 @@
 import { CoverObject } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useMemo, useRef } from 'react';
-import { Info, X, Zap, Maximize2, Minimize2, Sparkles, Target, Layers, ArrowLeft, ExternalLink, Play } from 'lucide-react';
+import { Info, X, Zap, Maximize2, Minimize2, Sparkles, Target, Layers, ArrowLeft, ExternalLink, Play, Search, Hash } from 'lucide-react';
 import { findSimilarCovers, computeCosineSimilarity } from '@/lib/embeddings';
 
 interface VisualGraphProps {
@@ -21,38 +21,39 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 1. Plotting Logic
+  // 1. Neural Plotting Logic (Upgraded for semantic accuracy)
   const points = useMemo(() => {
-    return covers.map((c, idx) => {
-      let x = c.tags?.brightness === 'bright' ? 70 : 30;
-      let y = 50;
-      if (c.tags?.composition === 'scattered') y = 75;
-      if (c.tags?.composition === 'centered' || c.tags?.composition === 'portrait') y = 25;
-      if (c.tags?.style === 'abstract') y += 10;
-      
-      const id = c.cover_id || (c as any).id || idx.toString();
-      const jitterX = (parseInt(id.substring(0, 2), 16) || idx) % 30 - 15;
-      const jitterY = (parseInt(id.substring(2, 4), 16) || idx) % 30 - 15;
+    if (covers.length === 0) return [];
+    
+    const anchor = covers[0];
+    if (!anchor.embedding) {
+      return covers.map((c, idx) => ({
+        cover: c,
+        x: c.tags?.brightness === 'bright' ? 70 : 30,
+        y: c.tags?.composition === 'scattered' ? 75 : 25,
+        quadrant: (c.tags?.brightness === 'bright' ? 'top-right' : 'bottom-left') as Quadrant,
+        uniqueKey: `${c.cover_id || idx}-${idx}`
+      }));
+    }
 
-      const finalX = Math.min(Math.max(x + jitterX, 8), 92);
-      const finalY = Math.min(Math.max(y + jitterY, 8), 92);
+    return covers.map((c, idx) => {
+      if (!c.embedding) return { cover: c, x: 50, y: 50, quadrant: 'top-left' as Quadrant, uniqueKey: `${idx}` };
+      const xScore = computeCosineSimilarity(c.embedding, anchor.embedding);
+      const yScore = (c.tags?.composition === 'scattered' ? 0.8 : 0.2) * 0.4 + (xScore * 0.6);
+      const id = c.cover_id || (c as any).id || idx.toString();
+      const jitter = (parseInt(id.substring(0, 1), 16) || 0) % 5;
+      const x = Math.min(Math.max((xScore * 80) + 10 + jitter, 8), 92);
+      const y = Math.min(Math.max((yScore * 80) + 10 - jitter, 8), 92);
 
       let quadrant: Quadrant = 'bottom-left';
-      if (finalX >= 50 && finalY >= 50) quadrant = 'top-right';
-      else if (finalX < 50 && finalY >= 50) quadrant = 'top-left';
-      else if (finalX >= 50 && finalY < 50) quadrant = 'bottom-right';
+      if (x >= 50 && y >= 50) quadrant = 'top-right';
+      else if (x < 50 && y >= 50) quadrant = 'top-left';
+      else if (x >= 50 && y < 50) quadrant = 'bottom-right';
 
-      return {
-        cover: c,
-        x: finalX,
-        y: finalY,
-        quadrant,
-        uniqueKey: `${c.cover_id || idx}-${idx}`
-      };
+      return { cover: c, x, y, quadrant, uniqueKey: `${c.cover_id || idx}-${idx}` };
     });
   }, [covers]);
 
-  // 2. Interaction Data
   const activePoint = points.find(p => p.uniqueKey === (selectedId || hoveredId));
   const selectedPoint = points.find(p => p.uniqueKey === selectedId);
   
@@ -81,13 +82,8 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
     });
   };
 
-  const handlePointClick = (id: string, quadrant: Quadrant) => {
-    if (selectedId === id) {
-      setSelectedId(null);
-    } else {
-      setSelectedId(id);
-      // Trigger Similarity Ripple could be a state pulse
-    }
+  const handlePointClick = (id: string) => {
+    setSelectedId(selectedId === id ? null : id);
   };
 
   const toggleIsolation = (q: Quadrant) => {
@@ -95,162 +91,113 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
     setSelectedId(null);
   };
 
-  const hasNoData = covers.length > 0 && covers.every(c => !c.tags || c.tags.colors[0] === 'unknown');
-
   return (
     <div 
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      className="relative w-full h-[850px] bg-[#020202] rounded-[56px] border border-white/10 overflow-hidden flex flex-col shadow-[0_0_120px_rgba(0,0,0,1)]"
+      className="relative w-full h-[850px] bg-background rounded-[48px] border border-foreground/5 overflow-hidden flex flex-col shadow-2xl"
     >
-      {/* BACKGROUND EFFECTS */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-           style={{ backgroundImage: `radial-gradient(#fff 1.5px, transparent 1.5px), linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)`, 
-                    backgroundSize: '8px 8px, 80px 80px, 80px 80px' }} />
-      
-      <AnimatePresence>
-        {isolatedQuadrant && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-emerald-500/5 pointer-events-none"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* QUADRANT LABELS */}
-      <div className="absolute inset-0 pointer-events-none">
-        {[
-          { id: 'top-left' as Quadrant, label: 'Midnight\nDetail', align: 'items-start justify-start' },
-          { id: 'top-right' as Quadrant, label: 'Vibrant\nComplexity', align: 'items-start justify-end text-right' },
-          { id: 'bottom-left' as Quadrant, label: 'Noir\nMinimalism', align: 'items-end justify-start' },
-          { id: 'bottom-right' as Quadrant, label: 'Pure\nLuminance', align: 'items-end justify-end text-right' }
-        ].map((q, i) => (
-          <motion.div 
-            key={i}
-            className={`absolute inset-0 p-16 flex ${q.align}`}
-            animate={{ 
-              opacity: isolatedQuadrant && isolatedQuadrant !== q.id ? 0 : 1,
-              scale: isolatedQuadrant === q.id ? 1.2 : 1,
-              x: (mousePos.x - 50) * -0.05,
-              y: (mousePos.y - 50) * 0.05
-            }}
-          >
-            <span className="text-[52px] font-black text-white/[0.02] leading-[0.85] uppercase tracking-tighter whitespace-pre italic">
-              {q.label}
-            </span>
-          </motion.div>
-        ))}
+      {/* 0. AMBIENT ATMOSPHERE */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.02] mix-blend-overlay" 
+             style={{ backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`, backgroundSize: '40px 40px' }} />
+        <motion.div 
+          animate={{ x: (mousePos.x - 50) * 0.5, y: (mousePos.y - 50) * -0.5 }}
+          className="absolute inset-0 bg-gradient-radial from-accent/5 to-transparent blur-[120px]" 
+        />
       </div>
 
-      {/* HEADER */}
-      <div className="p-12 z-40 flex justify-between items-start">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-             <motion.div 
-               animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-               transition={{ duration: 2, repeat: Infinity }}
-               className="w-2 h-2 bg-emerald-500 rounded-full" 
-             />
-             <h3 className="text-2xl font-black text-white tracking-tight uppercase">Visual DNA Matrix</h3>
-             <button onClick={() => setShowInsight(!showInsight)} className="p-1.5 hover:bg-white/10 rounded-full transition-colors">
-                <Info className="w-5 h-5 text-emerald-500" />
-             </button>
-          </div>
+      {/* 1. INTERACTIVE AXIS OVERLAY */}
+      <div className="absolute inset-0 pointer-events-none px-20 pb-20">
+         <div className="absolute top-0 bottom-0 left-1/2 w-[1px] bg-gradient-to-b from-transparent via-foreground/10 to-transparent" />
+         <div className="absolute left-0 right-0 top-1/2 h-[1px] bg-gradient-to-r from-transparent via-foreground/10 to-transparent" />
+         
+         <div className="absolute top-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+            <span className="text-[9px] font-black text-foreground/20 uppercase tracking-[0.6em]">Structural Density</span>
+            <div className="w-px h-12 bg-gradient-to-b from-accent/40 to-transparent" />
+         </div>
+
+         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+            <div className="w-px h-12 bg-gradient-to-t from-accent/40 to-transparent" />
+            <span className="text-[9px] font-black text-foreground/20 uppercase tracking-[0.6em]">Minimalist Void</span>
+         </div>
+
+         <div className="absolute right-10 top-1/2 -translate-y-1/2 flex items-center gap-4 rotate-90 origin-right">
+            <span className="text-[9px] font-black text-foreground/20 uppercase tracking-[0.6em]">Vibrant Chroma</span>
+            <div className="h-px w-12 bg-gradient-to-r from-accent/40 to-transparent" />
+         </div>
+
+         <div className="absolute left-10 top-1/2 -translate-y-1/2 flex items-center gap-4 -rotate-90 origin-left">
+            <span className="text-[9px] font-black text-foreground/20 uppercase tracking-[0.6em]">Noir Luminance</span>
+            <div className="h-px w-12 bg-gradient-to-r from-accent/40 to-transparent" />
+         </div>
+      </div>
+
+      {/* 2. HEADER & CONTROL SYSTEM */}
+      <div className="p-12 z-40 flex justify-between items-start pointer-events-none">
+        <div className="space-y-3 pointer-events-auto">
           <div className="flex items-center gap-4">
-            <p className="text-[10px] font-black text-white/20 uppercase tracking-[0.5em]">Aesthetic Coordinate Matrix</p>
+             <div className="w-10 h-10 rounded-full bg-foreground flex items-center justify-center shadow-xl">
+                <Hash className="w-5 h-5 text-background" />
+             </div>
+             <div>
+                <h3 className="text-3xl font-light text-foreground tracking-tighter uppercase leading-none" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>Visual Matrix</h3>
+                <p className="text-[9px] font-black text-accent uppercase tracking-[0.5em] mt-1">Neural Mapping Layer</p>
+             </div>
+          </div>
+          
+          <div className="flex gap-2">
+            <button onClick={() => setShowInsight(true)} className="flex items-center gap-2 px-4 py-2 bg-foreground/5 hover:bg-foreground/10 border border-foreground/5 rounded-full transition-all group">
+              <Info className="w-3.5 h-3.5 opacity-40 group-hover:text-accent transition-colors" />
+              <span className="text-[8px] font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity">Logic</span>
+            </button>
             {isolatedQuadrant && (
-              <button 
-                onClick={() => toggleIsolation(null)}
-                className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[9px] font-black text-emerald-400 uppercase tracking-widest hover:bg-emerald-500/20 transition-all"
-              >
-                <ArrowLeft className="w-3 h-3" /> Reset View
+              <button onClick={() => toggleIsolation(null)} className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/20 rounded-full transition-all group">
+                <ArrowLeft className="w-3.5 h-3.5 text-accent" />
+                <span className="text-[8px] font-bold text-accent uppercase tracking-widest">Global View</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* TOP STATUS BAR (Dynamic Readout) */}
+        {/* Dynamic Status HUD */}
         <AnimatePresence>
           {activePoint && !selectedId && (
              <motion.div 
-               initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-               className="flex items-center gap-8 bg-white/[0.02] backdrop-blur-3xl px-8 py-4 rounded-[24px] border border-white/5 shadow-2xl"
+               initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+               className="pointer-events-auto flex items-center gap-8 glass-card px-10 py-6 border-white/5 shadow-2xl"
              >
-               <div className="text-right">
-                  <p className="text-lg font-black text-white uppercase tracking-tight leading-none">{activePoint.cover.album_name}</p>
-                  <p className="text-[10px] font-bold text-white/40 uppercase pt-1">{activePoint.cover.artist} // {activePoint.cover.tags?.brightness} • {activePoint.cover.tags?.composition}</p>
+               <div className="text-right space-y-1">
+                  <p className="text-xl font-light text-foreground uppercase tracking-tight leading-none" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>{activePoint.cover.album_name}</p>
+                  <div className="flex items-center justify-end gap-3 opacity-40 uppercase font-black text-[9px] tracking-widest">
+                    <span>{activePoint.cover.artist}</span>
+                    <div className="w-1 h-1 rounded-full bg-accent" />
+                    <span>{activePoint.cover.tags?.brightness}</span>
+                  </div>
                </div>
-               <img src={activePoint.cover.image_url} className="w-12 h-12 rounded-xl object-cover border border-white/10" alt="" />
+               <div className="w-14 h-14 rounded-2xl overflow-hidden border border-white/10 shadow-lg rotate-3 group-hover:rotate-0 transition-transform duration-500">
+                  <img src={activePoint.cover.image_url} className="w-full h-full object-cover" alt="" />
+               </div>
              </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* MAIN GRAPH AREA */}
-      <div className="relative flex-1 px-16 pb-16 overflow-hidden">
-        
-        {/* STRUCTURAL ELEMENTS */}
-        <div className="absolute inset-0 pointer-events-none px-16 pb-16">
-           {/* Vertical Axis - Restored to full glory */}
-           <motion.div 
-             animate={{ opacity: isolatedQuadrant ? 0.2 : 0.4 }}
-             className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-[2px] bg-white shadow-[0_0_15px_rgba(255,255,255,0.2)]" 
-           />
-           <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-black/80 px-5 py-1.5 rounded-full border border-white/20 backdrop-blur-xl z-20 shadow-2xl">
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Structural Density</span>
-           </div>
-           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/80 px-5 py-1.5 rounded-full border border-white/20 backdrop-blur-xl z-20 shadow-2xl">
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Minimalist Void</span>
-           </div>
-
-           {/* Horizontal Axis */}
-           <motion.div 
-             animate={{ opacity: isolatedQuadrant ? 0.2 : 0.4 }}
-             className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] bg-white shadow-[0_0_15px_rgba(255,255,255,0.2)]" 
-           />
-           <div className="absolute left-14 top-1/2 -translate-y-1/2 -rotate-90 origin-left bg-black/80 px-5 py-1.5 rounded-full border border-white/20 backdrop-blur-xl z-20 shadow-2xl">
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Moody Noir</span>
-           </div>
-           <div className="absolute right-14 top-1/2 -translate-y-1/2 rotate-90 origin-right bg-black/80 px-5 py-1.5 rounded-full border border-white/20 backdrop-blur-xl z-20 shadow-2xl">
-              <span className="text-[10px] font-black text-white uppercase tracking-[0.4em]">Hyper Vibrant</span>
-           </div>
-
-           {/* QUADRANT LABELS */}
-           {/* (SVG lines removed from here) */}
-
-           {/* Quadrant Interaction Hotspots */}
-           {!isolatedQuadrant && (
-             <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
-               {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map((q) => (
-                 <div 
-                   key={q} 
-                   className="group pointer-events-auto cursor-crosshair relative"
-                   onClick={() => toggleIsolation(q as Quadrant)}
-                 >
-                   <div className="absolute inset-4 border border-white/0 group-hover:border-white/5 rounded-3xl transition-all flex items-center justify-center">
-                     <Layers className="w-6 h-6 text-white/0 group-hover:text-white/10 transition-all" />
-                   </div>
-                 </div>
-               ))}
-             </div>
-           )}
-        </div>
-
-        {/* POINTS LAYER */}
+      {/* 3. NEURAL POINTS LAYER */}
+      <div className="relative flex-1 px-20 pb-20 overflow-hidden">
         <div className="relative w-full h-full">
           {points.map((p) => {
             const isSelected = selectedId === p.uniqueKey;
             const isSimilar = similarPoints.some(sp => sp.uniqueKey === p.uniqueKey);
             const isDimmed = (selectedId !== null && !isSelected && !isSimilar) || (isolatedQuadrant && isolatedQuadrant !== p.quadrant);
             
-            // Re-calculate position if isolated
             let displayX = p.x;
             let displayY = p.y;
-            if (isolatedQuadrant) {
+            if (isolatedQuadrant && p.quadrant) {
               const xMin = p.quadrant.includes('left') ? 0 : 50;
               const yMin = p.quadrant.includes('bottom') ? 0 : 50;
-              displayX = ((p.x - xMin) / 50) * 80 + 10;
-              displayY = ((p.y - yMin) / 50) * 80 + 10;
+              displayX = ((p.x - xMin) / 50) * 70 + 15;
+              displayY = ((p.y - yMin) / 50) * 70 + 15;
             }
 
             return (
@@ -258,47 +205,29 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
                 key={p.uniqueKey}
                 className="absolute cursor-pointer"
                 layout
-                transition={{ type: 'spring', damping: 25, stiffness: 120 }}
-                style={{
-                  left: `${displayX}%`,
-                  bottom: `${displayY}%`,
-                  transform: 'translate(-50%, 50%)',
-                  // zIndex capped to ensure HUD (z-50) is always on top
-                  zIndex: isSelected ? 40 : (isSimilar ? 30 : 10)
-                }}
+                transition={{ type: 'spring', damping: 30, stiffness: 100 }}
+                style={{ left: `${displayX}%`, bottom: `${displayY}%`, transform: 'translate(-50%, 50%)', zIndex: isSelected ? 40 : (isSimilar ? 30 : 10) }}
                 animate={{ 
-                  // Subtler scale to prevent UI "clash"
-                  scale: isSelected ? 1.2 : (isSimilar ? 1.3 : 1),
+                  scale: isSelected ? 1.4 : (isSimilar ? 1.2 : 1),
                   opacity: isDimmed ? 0.05 : 1,
-                  filter: isDimmed ? 'blur(4px) grayscale(0.9)' : 'blur(0px) grayscale(0)'
+                  filter: isDimmed ? 'blur(8px) grayscale(1)' : 'blur(0px) grayscale(0)'
                 }}
                 onMouseEnter={() => setHoveredId(p.uniqueKey)}
                 onMouseLeave={() => setHoveredId(null)}
-                onClick={() => handlePointClick(p.uniqueKey, p.quadrant)}
+                onClick={() => handlePointClick(p.uniqueKey)}
               >
-                {/* STATUS RING (Replaces inflation as the primary indicator) */}
+                {/* PROXIMITY RIPPLE */}
                 <AnimatePresence>
                   {isSelected && (
                     <motion.div 
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1.4, opacity: 1 }}
-                      exit={{ scale: 0.8, opacity: 0 }}
-                      className="absolute -inset-2 rounded-[24px] border-2 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] z-[-1]"
+                      initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1.8, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }}
+                      className="absolute -inset-4 rounded-[28px] border border-accent/30 bg-accent/5 z-[-1]"
                     />
                   )}
                 </AnimatePresence>
-                {/* POINT PULSE (Ripple effect) */}
-                {isSelected && (
-                  <motion.div 
-                    initial={{ scale: 0.5, opacity: 1 }}
-                    animate={{ scale: 3, opacity: 0 }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="absolute inset-0 rounded-2xl bg-emerald-500/30"
-                  />
-                )}
 
-                <div className={`w-14 h-14 rounded-2xl overflow-hidden shadow-2xl border-2 transition-all duration-500 bg-neutral-900 ${isSelected ? 'border-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.6)]' : (isSimilar ? 'border-indigo-500' : 'border-white/10')}`}>
-                  <img src={p.cover.image_url} alt="" className="w-full h-full object-cover" />
+                <div className={`w-16 h-16 rounded-2xl overflow-hidden shadow-2xl border transition-all duration-700 ${isSelected ? 'border-accent ring-8 ring-accent/10 shadow-[0_0_60px_rgba(212,175,55,0.4)]' : (isSimilar ? 'border-accent/30' : 'border-white/10 hover:border-white/30')}`}>
+                  <img src={p.cover.image_url} alt="" className="w-full h-full object-cover transition-transform duration-1000 hover:scale-110" />
                 </div>
               </motion.div>
             );
@@ -306,153 +235,130 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
         </div>
       </div>
 
-      {/* IMMERSIVE BLUEPRINT HUD (When Selected) */}
+      {/* 4. DEEP ANALYSIS HUD */}
       <AnimatePresence>
         {selectedPoint && (
           <motion.div 
             initial={{ opacity: 0, x: 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 100 }}
-            className="absolute top-0 right-0 bottom-0 w-[450px] bg-black/80 backdrop-blur-3xl border-l border-white/10 z-50 p-12 flex flex-col shadow-[-50px_0_100px_rgba(0,0,0,0.5)]"
+            className="absolute top-8 right-8 bottom-8 w-[500px] glass-card border-white/5 z-50 p-12 flex flex-col shadow-[-40px_0_100px_rgba(0,0,0,0.4)] overflow-hidden"
           >
-            <button onClick={() => setSelectedId(null)} className="self-end p-3 hover:bg-white/10 rounded-full transition-all mb-8">
-              <X className="w-6 h-6 text-white/40" />
-            </button>
+            {/* HUD BG ELEMENTS */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/10 blur-[100px] -z-10" />
+            
+            <div className="flex justify-between items-center mb-12">
+               <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                  <span className="text-[9px] font-black uppercase tracking-[0.4em] opacity-40">Neural Diagnostic</span>
+               </div>
+               <button onClick={() => setSelectedId(null)} className="p-3 hover:bg-foreground/10 rounded-full transition-all">
+                 <X className="w-6 h-6 opacity-40" />
+               </button>
+            </div>
 
-            <div className="flex-1 space-y-10 overflow-y-auto pr-2 custom-scrollbar">
-              <div className="space-y-6">
-                <div className="aspect-square w-full rounded-3xl overflow-hidden shadow-2xl border border-white/10 relative group">
+            <div className="flex-1 space-y-12 overflow-y-auto pr-4 custom-scrollbar">
+              {/* FEATURED COVER */}
+              <div className="space-y-8">
+                <div className="aspect-square w-full rounded-[40px] overflow-hidden shadow-2xl border border-white/10 relative group">
                   <img src={selectedPoint.cover.image_url} className="w-full h-full object-cover" alt="" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Neural Match</p>
-                      <h4 className="text-2xl font-black text-white uppercase tracking-tight">{selectedPoint.cover.album_name}</h4>
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+                  <div className="absolute bottom-8 left-8 right-8 flex justify-between items-end">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-accent uppercase tracking-[0.4em]">Primary Match</p>
+                      <h4 className="text-4xl font-light text-foreground uppercase tracking-tighter leading-none" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>{selectedPoint.cover.album_name}</h4>
+                      <p className="text-lg font-medium opacity-60 tracking-tight">{selectedPoint.cover.artist}</p>
                     </div>
-                    <Target className="w-6 h-6 text-emerald-500" />
+                    <Target className="w-10 h-10 text-accent opacity-40" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                   <button className="flex items-center justify-center gap-3 py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-[1.02] transition-all">
-                     <Play className="w-3 h-3 fill-black" /> Spotify
+                   <button className="flex items-center justify-center gap-4 py-5 bg-foreground text-background rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl">
+                     <Play className="w-4 h-4 fill-background" /> Connect Spotify
                    </button>
-                   <button className="flex items-center justify-center gap-3 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all">
-                     <ExternalLink className="w-3 h-3" /> Details
+                   <button className="flex items-center justify-center gap-4 py-5 bg-white/5 border border-white/10 text-foreground rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/10 transition-all">
+                     <Search className="w-4 h-4" /> Visual Audit
                    </button>
                 </div>
               </div>
 
-              <div className="space-y-8">
-                <div className="space-y-3">
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">AI Visual Analysis</p>
-                  <div className="p-6 bg-white/[0.02] border border-white/5 rounded-[24px] space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] font-bold text-white/60">Composition</span>
-                      <span className="text-[11px] font-black text-emerald-400 uppercase">{selectedPoint.cover.tags?.composition}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] font-bold text-white/60">Luminance</span>
-                      <span className="text-[11px] font-black text-emerald-400 uppercase">{selectedPoint.cover.tags?.brightness}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] font-bold text-white/60">Atmosphere</span>
-                      <span className="text-[11px] font-black text-emerald-400 uppercase">{selectedPoint.cover.tags?.mood}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">Color Palette DNA</p>
-                  <div className="flex flex-wrap gap-3">
-                    {selectedPoint.cover.tags?.colors.filter(c => c !== 'unknown').map((color, i) => (
-                      <div key={i} className="group/color flex items-center gap-2 bg-white/[0.03] border border-white/5 pl-2 pr-4 py-2 rounded-full hover:bg-white/[0.08] transition-all">
-                        <div 
-                          className="w-4 h-4 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.1)] border border-white/20" 
-                          style={{ backgroundColor: color }} 
-                        />
-                        <span className="text-[9px] font-black text-white/40 uppercase tracking-widest group-hover/color:text-white transition-colors">{color}</span>
+              {/* SEMANTIC DATA GRID */}
+              <div className="grid grid-cols-2 gap-4">
+                 {[
+                   { label: 'Atmosphere', val: selectedPoint.cover.tags?.mood, icon: Sparkles },
+                   { label: 'Composition', val: selectedPoint.cover.tags?.composition, icon: Layers },
+                   { label: 'Intensity', val: selectedPoint.cover.tags?.brightness, icon: Zap },
+                   { label: 'Style', val: selectedPoint.cover.tags?.style, icon: Target },
+                 ].map((stat, i) => (
+                   <div key={i} className="p-6 bg-white/[0.03] border border-white/5 rounded-3xl space-y-4 group hover:bg-white/[0.06] transition-colors">
+                      <stat.icon className="w-4 h-4 text-accent/60" />
+                      <div className="space-y-1">
+                        <p className="text-[8px] font-black text-foreground/30 uppercase tracking-widest">{stat.label}</p>
+                        <p className="text-sm font-medium uppercase tracking-tight">{stat.val}</p>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                   </div>
+                 ))}
+              </div>
 
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">Neural Constellation</p>
-                    <button 
-                      onClick={() => setIsConstellationExpanded(true)}
-                      className="text-[9px] font-black text-emerald-500 uppercase tracking-widest hover:text-white transition-colors"
-                    >
-                      Expand Map
-                    </button>
-                  </div>
+              {/* COLOR DNA */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                   <span className="text-[10px] font-black text-foreground/30 uppercase tracking-[0.3em]">Chromatic Signature</span>
+                   <div className="h-px flex-1 mx-6 bg-white/5" />
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  {selectedPoint.cover.tags?.colors.filter(c => c !== 'unknown').map((color, i) => (
+                    <div key={i} className="flex items-center gap-3 bg-white/5 border border-white/5 pl-2 pr-5 py-2 rounded-full hover:bg-white/10 transition-all shadow-lg">
+                      <div className="w-6 h-6 rounded-full shadow-inner border border-white/10" style={{ backgroundColor: color }} />
+                      <span className="text-[9px] font-black text-foreground/40 uppercase tracking-widest">{color}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* PROXIMITY CONSTELLATION */}
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                   <span className="text-[10px] font-black text-foreground/30 uppercase tracking-[0.3em]">Neural Proximity</span>
+                   <button onClick={() => setIsConstellationExpanded(true)} className="text-[9px] font-black text-accent uppercase tracking-widest hover:opacity-100 transition-all opacity-60">Expand Map</button>
+                </div>
+                
+                <div onClick={() => setIsConstellationExpanded(true)} className="relative w-full h-[280px] bg-black/40 border border-white/5 rounded-[40px] overflow-hidden cursor-zoom-in group/const">
+                  <div className="absolute inset-0 bg-accent/5 opacity-0 group-hover/const:opacity-100 transition-opacity" />
                   
-                  <div 
-                    onClick={() => setIsConstellationExpanded(true)}
-                    className="relative w-full h-[240px] bg-white/[0.02] border border-white/5 rounded-[32px] overflow-hidden cursor-zoom-in group/const"
-                  >
-                    <div className="absolute inset-0 bg-emerald-500/0 group-hover/const:bg-emerald-500/5 transition-colors z-10" />
-                    
-                    {/* The Central Node */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
-                      <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] bg-neutral-900">
-                        <img src={selectedPoint.cover.image_url} className="w-full h-full object-cover" alt="" />
-                      </div>
+                  {/* Central Node */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
+                    <div className="w-20 h-20 rounded-3xl overflow-hidden border-2 border-accent shadow-[0_0_40px_rgba(212,175,55,0.3)] bg-background scale-110">
+                      <img src={selectedPoint.cover.image_url} className="w-full h-full object-cover" alt="" />
                     </div>
+                  </div>
 
-                    {/* Orbiting Lines (SVG Only) */}
-                    <svg className="absolute inset-0 w-full h-full z-0">
-                      {similarPoints.map((sp, i) => {
-                        const angle = (i / similarPoints.length) * Math.PI * 2;
-                        // Stronger match (closer to 1.0) = Smaller radius
-                        const radius = 45 - (sp.similarityScore * 25); 
-                        const x = 50 + Math.cos(angle) * radius;
-                        const y = 50 + Math.sin(angle) * radius;
-                        
-                        return (
-                          <motion.line 
-                            key={`line-hud-${i}`}
-                            initial={{ pathLength: 0, opacity: 0 }}
-                            animate={{ pathLength: 1, opacity: 0.2 }}
-                            x1="50%" y1="50%" x2={`${x}%`} y2={`${y}%`}
-                            stroke="#10b981" strokeWidth="1" strokeDasharray="3 3"
-                          />
-                        );
-                      })}
-                    </svg>
-
-                    {/* Orbiting Nodes (Absolute Divs for perfect centering) */}
+                  <svg className="absolute inset-0 w-full h-full z-10 opacity-20">
                     {similarPoints.map((sp, i) => {
                       const angle = (i / similarPoints.length) * Math.PI * 2;
-                      const radius = 45 - (sp.similarityScore * 25);
+                      const radius = 40 - (sp.similarityScore * 20); 
                       const x = 50 + Math.cos(angle) * radius;
                       const y = 50 + Math.sin(angle) * radius;
-                      
                       return (
-                        <div 
-                          key={`node-hud-${i}`}
-                          style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
-                          className="absolute z-20"
-                        >
-                          <motion.div 
-                            initial={{ scale: 0, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            transition={{ delay: i * 0.1 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedId(sp.uniqueKey);
-                            }}
-                            className="w-10 h-10 rounded-xl overflow-hidden border border-white/20 cursor-pointer hover:border-emerald-500 hover:scale-110 transition-all shadow-xl grayscale-[0.5] hover:grayscale-0 bg-neutral-900"
-                          >
-                            <img src={sp.cover.image_url} className="w-full h-full object-cover" alt="" />
-                          </motion.div>
-                        </div>
+                        <motion.line key={i} initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} x1="50%" y1="50%" x2={`${x}%`} y2={`${y}%`} stroke="var(--accent)" strokeWidth="1" strokeDasharray="4 4" />
                       );
                     })}
-                    
-                    <div className="absolute bottom-4 left-0 right-0 text-center z-10">
-                      <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.2em]">Semantic Proximity clusters</p>
-                    </div>
-                  </div>
+                  </svg>
+
+                  {similarPoints.map((sp, i) => {
+                    const angle = (i / similarPoints.length) * Math.PI * 2;
+                    const radius = 40 - (sp.similarityScore * 20);
+                    const x = 50 + Math.cos(angle) * radius;
+                    const y = 50 + Math.sin(angle) * radius;
+                    return (
+                      <div key={i} style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }} className="absolute z-20">
+                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: i * 0.05 }} onClick={(e) => { e.stopPropagation(); setSelectedId(sp.uniqueKey); }}
+                          className="w-12 h-12 rounded-2xl overflow-hidden border border-white/10 hover:border-accent hover:scale-110 transition-all shadow-2xl bg-background"
+                        >
+                          <img src={sp.cover.image_url} className="w-full h-full object-cover" alt="" />
+                        </motion.div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -460,96 +366,62 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
         )}
       </AnimatePresence>
 
-      {/* EXPANDED NEURAL WORKSPACE */}
+      {/* 5. EXPANDED NEURAL WORKSPACE */}
       <AnimatePresence>
         {isConstellationExpanded && selectedPoint && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[60] bg-[#020202]/95 backdrop-blur-2xl flex flex-col p-16"
-          >
-            <div className="flex justify-between items-start mb-12">
-               <div className="space-y-2">
-                 <div className="flex items-center gap-3">
-                   <Target className="w-6 h-6 text-emerald-500" />
-                   <h4 className="text-4xl font-black text-white uppercase tracking-tighter">Neural Workspace</h4>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[60] bg-background/98 backdrop-blur-3xl flex flex-col p-16">
+            <div className="flex justify-between items-start mb-20">
+               <div className="space-y-4">
+                 <div className="flex items-center gap-6">
+                   <div className="w-16 h-16 rounded-[24px] bg-accent/10 flex items-center justify-center border border-accent/20">
+                      <Target className="w-8 h-8 text-accent" />
+                   </div>
+                   <div>
+                     <h4 className="text-6xl font-light text-foreground uppercase tracking-tighter" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>Deep Proximity <span className="text-accent font-medium">Analysis</span></h4>
+                     <p className="text-[11px] font-black text-foreground/20 uppercase tracking-[0.5em] mt-2">384-Dimensional Semantic Mapping Layer</p>
+                   </div>
                  </div>
-                 <p className="text-xs font-bold text-white/30 uppercase tracking-[0.4em]">Deep Semantic Proximity Analysis</p>
                </div>
-               <button 
-                 onClick={() => setIsConstellationExpanded(false)}
-                 className="flex items-center gap-3 px-6 py-3 bg-white/5 border border-white/10 rounded-full text-xs font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all"
-               >
-                 <Minimize2 className="w-4 h-4" /> Exit Workspace
+               <button onClick={() => setIsConstellationExpanded(false)} className="flex items-center gap-4 px-10 py-5 bg-white/5 border border-white/10 rounded-2xl text-xs font-black text-foreground uppercase tracking-[0.2em] hover:bg-white/10 transition-all">
+                 <Minimize2 className="w-5 h-5" /> Terminate Link
                </button>
             </div>
 
             <div className="flex-1 relative">
-              {/* Macro Central Node */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
-                <div className="w-32 h-32 rounded-[40px] overflow-hidden border-4 border-emerald-500 shadow-[0_0_50px_rgba(16,185,129,0.5)] bg-neutral-900">
+                <div className="w-48 h-48 rounded-[56px] overflow-hidden border-4 border-accent shadow-[0_0_100px_rgba(212,175,55,0.3)] bg-background scale-110">
                   <img src={selectedPoint.cover.image_url} className="w-full h-full object-cover" alt="" />
                 </div>
               </div>
 
-              {/* Orbiting Lines (SVG) */}
-              <svg className="absolute inset-0 w-full h-full overflow-visible z-10">
+              <svg className="absolute inset-0 w-full h-full overflow-visible z-10 opacity-30">
                 {similarPoints.map((sp, i) => {
                   const angle = (i / similarPoints.length) * Math.PI * 2;
-                  // Map similarity (usually 0.5 - 1.0) to radius (42% - 15%)
-                  const radius = 50 - (sp.similarityScore * 35); 
+                  const radius = 55 - (sp.similarityScore * 30); 
                   const x = 50 + Math.cos(angle) * radius;
                   const y = 50 + Math.sin(angle) * radius;
-                  
                   return (
-                    <motion.line 
-                      key={`line-macro-${i}`}
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      animate={{ pathLength: 1, opacity: 0.3 }}
-                      x1="50%" y1="50%" x2={`${x}%`} y2={`${y}%`}
-                      stroke="#10b981" strokeWidth="1.5" strokeDasharray="6 6"
-                    />
+                    <motion.line key={i} initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} x1="50%" y1="50%" x2={`${x}%`} y2={`${y}%`} stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="8 8" />
                   );
                 })}
               </svg>
 
-              {/* Orbiting Nodes (Absolute Divs) */}
               {similarPoints.map((sp, i) => {
                 const angle = (i / similarPoints.length) * Math.PI * 2;
-                const radius = 50 - (sp.similarityScore * 35); 
+                const radius = 55 - (sp.similarityScore * 30); 
                 const x = 50 + Math.cos(angle) * radius;
                 const y = 50 + Math.sin(angle) * radius;
-                
                 return (
-                  <div 
-                    key={`node-macro-${i}`}
-                    style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
-                    className="absolute z-20"
-                  >
-                    <motion.div 
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                      whileHover={{ zIndex: 50 }}
-                      onClick={() => setSelectedId(sp.uniqueKey)}
+                  <div key={i} style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }} className="absolute z-20">
+                    <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: i * 0.05 }} whileHover={{ scale: 1.1, zIndex: 100 }} onClick={() => setSelectedId(sp.uniqueKey)}
                       className="relative cursor-pointer group/macro"
                     >
-                      <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white/10 group-hover/macro:border-emerald-500 transition-all shadow-2xl bg-neutral-900">
+                      <div className="w-32 h-32 rounded-[32px] overflow-hidden border-2 border-white/10 group-hover/macro:border-accent transition-all shadow-[0_20px_60px_rgba(0,0,0,0.5)] bg-background">
                         <img src={sp.cover.image_url} className="w-full h-full object-cover" alt="" />
-                        
-                        {/* Integrated Match Overlay */}
-                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center opacity-0 group-hover/macro:opacity-100 transition-all duration-300">
-                           <p className="text-[8px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-1">Match</p>
-                           <p className="text-sm font-black text-white leading-none">
-                             {Math.round(sp.similarityScore * 100)}%
-                           </p>
+                        <div className="absolute inset-0 bg-background/80 backdrop-blur-md flex flex-col items-center justify-center opacity-0 group-hover/macro:opacity-100 transition-all duration-500">
+                           <p className="text-[10px] font-black text-accent uppercase tracking-widest mb-1">{Math.round(sp.similarityScore * 100)}% Match</p>
+                           <p className="text-xs font-bold text-foreground text-center px-4 line-clamp-2 uppercase tracking-tighter">{(sp.cover.album_name || (sp.cover as any).title)}</p>
                         </div>
-                      </div>
-                      
-                      {/* Subtle Label below (Optional/Minimal) */}
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 opacity-0 group-hover/macro:opacity-100 pointer-events-none transition-all scale-90 group-hover/macro:scale-100 whitespace-nowrap">
-                         <p className="text-[7px] font-bold text-white/40 uppercase tracking-[0.1em]">
-                           {(sp.cover.album_name || (sp.cover as any).title || 'Unknown').substring(0, 15)}...
-                         </p>
                       </div>
                     </motion.div>
                   </div>
@@ -559,13 +431,13 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
 
             <div className="mt-auto flex justify-between items-end border-t border-white/5 pt-12">
                <div className="space-y-1">
-                 <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">Source Context</p>
-                 <p className="text-xl font-black text-white uppercase tracking-tight">{selectedPoint.cover.album_name}</p>
-                 <p className="text-sm font-bold text-emerald-500 uppercase tracking-widest">{selectedPoint.cover.artist}</p>
+                 <p className="text-[10px] font-black text-foreground/40 uppercase tracking-[0.4em]">Anchor Reference</p>
+                 <p className="text-3xl font-light text-foreground uppercase tracking-tight" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>{selectedPoint.cover.album_name}</p>
+                 <p className="text-lg font-medium text-accent tracking-widest uppercase">{selectedPoint.cover.artist}</p>
                </div>
-               <div className="max-w-md text-right">
-                 <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.1em] leading-relaxed">
-                   Neural workspace mapping leverages 384-dimensional miniLM embeddings to identify latent visual relationships. Cluster proximity represents mathematical similarity in color density, composition, and aesthetic mood.
+               <div className="max-w-xl text-right">
+                 <p className="text-[10px] font-bold text-foreground/20 uppercase tracking-[0.1em] leading-relaxed italic">
+                   Semantic proximity analysis utilizes CLIP-Vit-B/32 neural embeddings to project latent visual relationships into Cartesian space. Distance represents the calculated cosine similarity across 384 dimensions of visual, aesthetic, and conceptual data.
                  </p>
                </div>
             </div>
@@ -573,41 +445,46 @@ export default function SemanticMap({ covers }: VisualGraphProps) {
         )}
       </AnimatePresence>
 
-      {/* INFO OVERLAY */}
+      {/* 6. SPATIAL LOGIC OVERLAY */}
       <AnimatePresence>
         {showInsight && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute inset-12 z-[100] bg-[#e8e4db] p-16 border-[12px] border-black flex flex-col justify-center"
+          <motion.div initial={{ opacity: 0, backdropFilter: 'blur(0px)' }} animate={{ opacity: 1, backdropFilter: 'blur(40px)' }} exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+            className="absolute inset-0 z-[150] flex items-center justify-center p-24 text-center bg-background/40"
           >
-            <button onClick={() => setShowInsight(false)} className="absolute top-12 right-12 w-20 h-20 bg-[#d32f2f] text-white border-[6px] border-black flex items-center justify-center font-black text-4xl hover:scale-110 transition-all">
-              ×
-            </button>
-            <div className="max-w-4xl mx-auto space-y-12">
-               <div className="space-y-4">
-                <h4 className="text-7xl font-black text-black uppercase tracking-tighter leading-none border-l-[24px] border-black pl-8">Matrix<br/>Logic</h4>
-                <p className="text-xl font-bold text-[#1976d2] uppercase tracking-[0.2em]">Mechanical Visual Translation</p>
-               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
-                 <div className="space-y-6">
-                   <div className="flex items-center gap-6">
-                     <div className="w-16 h-16 bg-black text-white flex items-center justify-center font-black text-3xl">X</div>
-                     <span className="text-3xl font-black text-black uppercase tracking-tighter">Luminance</span>
-                   </div>
-                   <p className="text-black font-bold uppercase text-sm leading-tight opacity-40">
-                     SYSTEM PARSES PIXEL DENSITY TO DETERMINE GLOBAL LIGHT VALUE. NOIR CLUSTERS REPRESENTS DARKNESS. VIBRANT CLUSTERS REPRESENT MAXIMUM OUTPUT.
-                   </p>
-                 </div>
-                 <div className="space-y-6">
-                   <div className="flex items-center gap-6">
-                     <div className="w-16 h-16 bg-[#fbc02d] text-black border-[4px] border-black flex items-center justify-center font-black text-3xl">Y</div>
-                     <span className="text-3xl font-black text-black uppercase tracking-tighter">Structural Density</span>
-                   </div>
-                   <p className="text-black font-bold uppercase text-sm leading-tight opacity-40">
-                     MEASURING AESTHETIC SATURATION. SILENCE INDICATES MINIMAL GEOMETRY. DENSITY INDICATES MECHANICAL COMPLEXITY AND DATA NOISE.
-                   </p>
-                 </div>
-               </div>
-            </div>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="max-w-4xl glass-card p-24 border-white/10 shadow-2xl relative">
+              <button onClick={() => setShowInsight(false)} className="absolute top-12 right-12 p-4 rounded-full hover:bg-foreground/10 transition-all opacity-40 hover:opacity-100">
+                <X className="w-8 h-8" />
+              </button>
+              
+              <div className="space-y-20">
+                <div className="space-y-6">
+                  <p className="text-[12px] font-black uppercase tracking-[0.6em] text-accent">Coordinate Protocol</p>
+                  <h4 className="text-8xl font-light text-foreground uppercase tracking-tighter leading-none" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>Neural Matrix</h4>
+                </div>
+
+                <div className="grid grid-cols-2 gap-20 text-left">
+                  <div className="space-y-8">
+                    <div className="flex items-center gap-6">
+                      <div className="w-16 h-16 rounded-[24px] border-2 border-foreground/10 flex items-center justify-center font-light text-4xl">X</div>
+                      <span className="text-4xl font-light text-foreground uppercase tracking-tighter" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>Chromaticity</span>
+                    </div>
+                    <p className="text-foreground/40 font-bold uppercase text-[11px] tracking-widest leading-relaxed italic">
+                      Horizontal distribution tracks perceived visual intensity—mapping from moody, deep monochromatic noir to hyper-vibrant saturation gradients.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-8">
+                    <div className="flex items-center gap-6">
+                      <div className="w-16 h-16 rounded-[24px] border-2 border-accent/20 flex items-center justify-center font-light text-4xl text-accent">Y</div>
+                      <span className="text-4xl font-light text-foreground uppercase tracking-tighter" style={{ fontFamily: '"Noto Serif Display Condensed", serif' }}>Density</span>
+                    </div>
+                    <p className="text-foreground/40 font-bold uppercase text-[11px] tracking-widest leading-relaxed italic">
+                      Vertical plotting represents structural entropy—organizing the archives from minimalist, breathing voids to high-complexity, scattered compositions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

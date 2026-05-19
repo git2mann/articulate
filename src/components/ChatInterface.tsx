@@ -31,60 +31,60 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="max-w-2xl mx-auto w-full p-6">
+    <div className="max-w-3xl mx-auto w-full p-6">
       {!isSearching ? (
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="text-center space-y-3">
-            <h2 className="text-4xl font-extrabold tracking-tight text-white leading-tight">
-              {isIndexing ? 'Calibrating Visuals...' : 'What do you remember?'}
+        <form onSubmit={handleSubmit} className="space-y-12">
+          <div className="text-center space-y-6">
+            <h2 className="text-4xl lg:text-5xl font-light tracking-tight text-foreground leading-tight">
+              {isIndexing ? 'Calibrating Archive...' : 'Recall the memory.'}
             </h2>
-            <p className="text-gray-400 font-medium text-lg opacity-60">
-              {isIndexing ? 'Please wait while Gemini analyzes your library.' : 'Describe any colors, shapes, or moods.'}
+            <p className="text-xs uppercase tracking-[0.4em] font-medium opacity-20">
+              {isIndexing ? 'Wait while neural fingerprints are indexed' : 'Describe the atmosphere, colors, or shapes'}
             </p>
           </div>
           
-          <div className={`search-input-container p-1 flex items-center gap-3 ${isIndexing ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-            <div className="pl-4 text-gray-400">
-              {isIndexing ? <Loader2 className="animate-spin" size={22} /> : <Search size={22} strokeWidth={2.5} />}
+          <div className={`p-1 flex items-center gap-6 border-b border-foreground/5 pb-6 transition-all ${isIndexing ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+            <div className="opacity-20">
+              {isIndexing ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
             </div>
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               disabled={isIndexing}
-              placeholder={isIndexing ? "Analyzing artwork..." : "e.g. A blue neon city with rain..."}
-              className="flex-1 py-4 bg-transparent text-white text-lg placeholder:text-gray-600 outline-none"
+              placeholder={isIndexing ? "Neural indexing in progress..." : "DESCRIBE MOODS, VAGUE SHAPES..."}
+              className="flex-1 bg-transparent text-foreground text-2xl font-light placeholder:text-foreground/5 outline-none"
             />
             <button
               type="submit"
               disabled={isIndexing}
-              className="bg-[#007AFF] text-white font-bold px-8 py-3 rounded-[12px] hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-blue-500/20 disabled:bg-gray-700 disabled:shadow-none"
+              className="elegant-button px-10 py-4"
             >
-              {isIndexing ? 'Wait...' : 'Search'}
+              <span className="uppercase tracking-[0.2em] text-[10px] font-bold">
+                {isIndexing ? 'Wait' : 'Recall'}
+              </span>
             </button>
           </div>
         </form>
       ) : (
-        <div className="glass p-10 rounded-[28px] border border-white/5 shadow-2xl space-y-8 animate-in fade-in zoom-in duration-700 cubic-bezier(0.2, 0.8, 0.2, 1)">
+        <div className="glass-card p-12 lg:p-16 space-y-12 animate-in border-foreground/5 shadow-2xl">
           {currentQuestion ? (
-            <div className="space-y-8">
-              <div className="flex items-center gap-3 text-[#007AFF]">
-                <div className="p-2 rounded-full bg-blue-500/10">
-                  <Sparkles size={18} />
-                </div>
-                <span className="text-xs font-bold uppercase tracking-[0.2em] opacity-80">Visual Guide</span>
+            <div className="space-y-12">
+              <div className="flex items-center gap-4">
+                <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                <span className="text-[9px] font-bold uppercase tracking-[0.3em] opacity-30">Inference Guidance</span>
               </div>
               
-              <p className="text-3xl font-bold text-white leading-[1.2] tracking-tight">
+              <p className="text-4xl font-light text-foreground leading-tight tracking-tight">
                 {getQuestionLabel(currentQuestion.attribute, currentQuestion.values)}
               </p>
               
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-4 pt-4">
                 {currentQuestion.values.map((val) => (
                   <button
                     key={val}
                     onClick={() => onAnswer(currentQuestion.attribute, val)}
-                    className="px-8 py-4 rounded-[18px] bg-white/5 border border-white/5 text-white font-semibold hover:bg-white/10 hover:border-white/20 active:scale-95 transition-all duration-300"
+                    className="px-10 py-5 rounded-lg bg-foreground/5 text-foreground font-medium text-sm hover:bg-foreground hover:text-background transition-all duration-500 uppercase tracking-widest"
                   >
                     {getAnswerLabel(currentQuestion.attribute, val)}
                   </button>
@@ -92,17 +92,21 @@ export default function ChatInterface({
               </div>
             </div>
           ) : (
-            <div className="text-center py-10 space-y-6">
-              <div className="w-20 h-20 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-blue-500/40">
-                <Sparkles className="text-white" size={40} />
+            <div className="text-center py-12 space-y-10">
+              <div className="w-20 h-20 border border-accent/20 rounded-full flex items-center justify-center mx-auto relative">
+                <Sparkles className="text-accent opacity-40" size={32} />
+                <div className="absolute inset-2 rounded-full border border-accent/10 animate-pulse" />
               </div>
-              <p className="text-3xl font-black text-white tracking-tight">Found your cover.</p>
+              <div className="space-y-4">
+                <p className="text-4xl font-light text-foreground tracking-tight leading-none">Retrieval Complete.</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.4em] opacity-20">Memory Successfully Matched</p>
+              </div>
               <button
                 onClick={() => window.location.reload()}
-                className="flex items-center gap-3 mx-auto text-blue-400 hover:text-blue-300 font-bold text-lg transition-colors"
+                className="flex items-center gap-4 mx-auto text-foreground/40 hover:text-foreground font-bold text-[10px] uppercase tracking-[0.2em] transition-all"
               >
-                <RotateCcw size={20} />
-                Try another
+                <RotateCcw size={14} />
+                New Inference Cycle
               </button>
             </div>
           )}

@@ -7,9 +7,8 @@ const allowedOrigins = ['localhost:3000'];
 if (appUrl) allowedOrigins.push(appUrl);
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['lucide-react', '@xenova/transformers'],
-  // @ts-expect-error - experimental field
-  allowedDevOrigins: appUrl ? [appUrl, '566e-193-40-56-36.ngrok-free.app'] : ['566e-193-40-56-36.ngrok-free.app'],
+  transpilePackages: ['lucide-react', '@huggingface/transformers'],
+  allowedDevOrigins: appUrl ? [appUrl, 'c5e6-193-40-56-36.ngrok-free.app'] : ['c5e6-193-40-56-36.ngrok-free.app'],
   async headers() {
     return [
       {
@@ -22,7 +21,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      allowedOrigins: [...allowedOrigins, '566e-193-40-56-36.ngrok-free.app'],
+      allowedOrigins: [...allowedOrigins, 'c5e6-193-40-56-36.ngrok-free.app'],
     },
   }
 };

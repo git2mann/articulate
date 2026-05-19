@@ -4,6 +4,7 @@ import { CoverObject } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { useTheme } from './ThemeContext';
+import { X } from 'lucide-react';
 
 
 interface AlbumGridProps {
@@ -34,75 +35,71 @@ export default function AlbumGrid({ covers, confidences }: AlbumGridProps) {
                   duration: 0.3, 
                   ease: "easeOut"
                 }}
-                className="group bauhaus-card cursor-pointer !bg-white"
+                className="group glass-card cursor-pointer overflow-hidden border-transparent hover:border-accent/10"
                 onClick={() => setModalCover(cover)}
                 onMouseEnter={() => setThemeFromImage(cover.image_url)}
                 onMouseLeave={resetTheme}
               >
-                <div className="aspect-square overflow-hidden bg-black relative border-b-[3px] border-black">
+                <div className="aspect-square overflow-hidden bg-foreground/5 relative">
                   <img
                     src={cover.image_url}
                     alt={`${cover.album_name} by ${cover.artist}`}
-                    className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${!cover.tags || Object.keys(cover.tags).length === 0 || !cover.tags.colors || cover.tags.colors.length === 0 || cover.tags.colors[0] === 'unknown' ? 'grayscale opacity-50' : ''}`}
+                    className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ${(!cover.tags || !cover.tags.colors || cover.tags.colors[0] === 'unknown') && !cover.visualDescription ? 'grayscale opacity-50' : ''}`}
                   />
-                  {(!cover.tags || Object.keys(cover.tags).length === 0 || !cover.tags.colors || cover.tags.colors.length === 0 || cover.tags.colors[0] === 'unknown') && (
+                  {(!cover.tags || !cover.tags.colors || cover.tags.colors[0] === 'unknown') && !cover.visualDescription && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="px-3 py-1 bg-[#fbc02d] border-[2px] border-black">
-                        <p className="text-[8px] font-black text-black uppercase tracking-widest leading-none">PENDING ANALYSIS</p>
+                      <div className="px-3 py-1 bg-background/80 backdrop-blur-md rounded-full shadow-sm border border-foreground/5">
+                        <p className="text-[7px] font-bold text-foreground/60 uppercase tracking-[0.2em] leading-none">Indexing</p>
                       </div>
                     </div>
                   )}
                   {typeof confidences !== 'undefined' && confidences[idx] !== undefined && (
-                    <div className="absolute top-0 right-0 bg-[#1976d2] text-white text-[8px] font-black px-2 py-1 border-l-[3px] border-b-[3px] border-black uppercase">
-                      {(confidences[idx] * 100).toFixed(0)}% MATCH
+                    <div className="absolute top-4 right-4 bg-accent text-background text-[7px] font-bold px-2 py-1 rounded-sm shadow-lg uppercase tracking-widest">
+                      {(confidences[idx] * 100).toFixed(0)}%
                     </div>
                   )}
                 </div>
-                <div className="p-4 space-y-1">
-                  <h3 className="text-black font-black text-sm uppercase leading-tight truncate tracking-tighter">
+                <div className="p-5 space-y-1.5">
+                  <h3 className="text-foreground font-medium text-[11px] uppercase leading-tight truncate tracking-widest opacity-80">
                     {cover.album_name}
                   </h3>
-                  <p className="text-black/40 text-[9px] font-bold truncate uppercase tracking-widest">
+                  <p className="text-foreground/30 text-[9px] font-medium truncate uppercase tracking-[0.2em]">
                     {cover.artist}
                   </p>
                 </div>
-                {/* Geometric Overlay */}
-                <div className="absolute inset-0 border-[6px] border-[#d32f2f] opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none" />
               </motion.div>
             );
           })}
         </AnimatePresence>
       </div>
       {modalCover && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setModalCover(null)}>
-          <div className="bg-[#e8e4db] border-[6px] border-black p-12 max-w-2xl w-full relative animate-in" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 backdrop-blur-sm p-4" onClick={() => setModalCover(null)}>
+          <div className="glass-card p-12 lg:p-16 max-w-3xl w-full relative animate-in border-foreground/10 shadow-2xl" onClick={e => e.stopPropagation()}>
             <button 
-              className="absolute -top-6 -right-6 w-12 h-12 bg-[#d32f2f] text-white border-[4px] border-black flex items-center justify-center font-black text-2xl hover:scale-110 transition-transform" 
+              className="absolute top-6 right-6 w-10 h-10 rounded-full hover:bg-foreground/5 flex items-center justify-center transition-colors opacity-40 hover:opacity-100" 
               onClick={() => setModalCover(null)}
             >
-              ×
+              <X className="w-5 h-5" />
             </button>
-            <div className="flex flex-col md:flex-row gap-8">
-              <div className="w-full md:w-64 aspect-square border-[6px] border-black shrink-0 relative bg-black">
+            <div className="flex flex-col md:flex-row gap-12 items-center">
+              <div className="w-full md:w-72 aspect-square rounded-xl shadow-2xl shrink-0 relative overflow-hidden bg-foreground/5">
                 <img src={modalCover.image_url} alt={modalCover.album_name} className="w-full h-full object-cover" />
-                <div className="absolute -bottom-4 -left-4 bg-[#fbc02d] text-black px-4 py-2 font-black text-[10px] uppercase border-[3px] border-black shadow-[4px_4px_0px_black]">
-                  MECHANICAL DATA
-                </div>
               </div>
-              <div className="flex-1 space-y-6">
-                <div>
-                  <h2 className="text-4xl font-black uppercase tracking-tighter leading-none mb-2">{modalCover.album_name}</h2>
-                  <p className="text-xl font-bold uppercase text-[#1976d2]">{modalCover.artist}</p>
+              <div className="flex-1 space-y-10">
+                <div className="space-y-4">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.4em] opacity-20">Archive Metadata</p>
+                  <h2 className="text-4xl lg:text-5xl font-light tracking-tight leading-none">{modalCover.album_name}</h2>
+                  <p className="text-xl font-medium text-accent/80 tracking-wide">{modalCover.artist}</p>
                 </div>
-                <div className="bg-white border-[3px] border-black p-6">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 opacity-30">Neural Fingerprint</h4>
-                  <p className="text-sm font-bold uppercase leading-tight italic">&quot;{modalCover.description || 'No description available.'}&quot;</p>
+                <div className="space-y-4">
+                  <div className="h-[1px] w-12 bg-accent/20" />
+                  <p className="text-sm font-medium tracking-wide leading-relaxed opacity-60 italic">&quot;{modalCover.description || modalCover.visualDescription || 'Neural fingerprint data unavailable.'}&quot;</p>
                 </div>
                 <button 
                   onClick={() => setModalCover(null)}
-                  className="bauhaus-button w-full bg-black text-white hover:bg-[#1976d2]"
+                  className="elegant-button w-full bg-foreground text-background hover:opacity-90 uppercase tracking-[0.2em] text-[10px] font-bold py-4"
                 >
-                  CLOSE ARCHIVE
+                  Return to Archive
                 </button>
               </div>
             </div>

@@ -5,17 +5,50 @@
  * Upgraded to Transformers.js v3 (@huggingface/transformers)
  */
 
+let transformersPromise: Promise<any> | null = null;
+
+async function getTransformers(onStatus?: (status: string) => void) {
+  if (typeof window === 'undefined') return null;
+  if (!transformersPromise) {
+    transformersPromise = (async () => {
+      const { pipeline, env, RawImage } = await import('@huggingface/transformers');
+      env.allowLocalModels = false;
+      env.useBrowserCache = true;
+      // Force WASM for reliability in parallel environments
+      if (env.backends?.onnx?.wasm) {
+        env.backends.onnx.wasm.numThreads = 1; 
+      }
+      // Setup progress tracking for model downloads
+      if (onStatus) {
+        (env as any).onProgress = (progress: any) => {
+          if (progress.status === 'progress') {
+            const percent = Math.round(progress.progress);
+            onStatus(`DOWNLOADING MODEL... ${percent}%`);
+          } else if (progress.status === 'initiate') {
+            onStatus(`INITIATING MODEL DOWNLOAD...`);
+          }
+        };
+      }
+
+      return { pipeline, env, RawImage };
+    })();
+  }
+  return transformersPromise;
+}
+
 let embeddingPipeline: any = null;
 let visionPipeline: any = null;
+let visionInitializationPromise: Promise<any> | null = null;
 let classifierPipeline: any = null;
+let classifierInitializationPromise: Promise<any> | null = null;
+let forceWasm = true;
+let isInitializing = false;
 
 /**
  * Detect the best available device for Transformers.js
- * Optimized for universal compatibility: Forces WASM for now to avoid WebGPU failures.
+ * Forced to WASM for maximum reliability during parallel indexing.
  */
-async function getBestDevice() {
-  if (typeof window === 'undefined') return 'wasm';
-  // WASM is the most stable backend across all browsers/environments currently.
+async function getBestDevice(): Promise<'wasm'> {
   return 'wasm';
 }
 
@@ -30,14 +63,15 @@ export async function getEmbedding(text: string): Promise<number[]> {
       return [];
     }
 
-    const { pipeline, env } = await import('@huggingface/transformers');
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
+    const { pipeline } = await getTransformers();
 
     if (!embeddingPipeline) {
       console.log("[Neural Engine] Initializing Text Model (all-MiniLM-L6-v2)...");
       const device = await getBestDevice();
-      embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { device });
+      embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { 
+        device,
+        dtype: 'fp32' // Ensure stability
+      });
     }
 
     const output = await embeddingPipeline(text, { 
@@ -57,8 +91,9 @@ export async function getEmbedding(text: string): Promise<number[]> {
  * Local Vision Engine: Describes an image URL using a browser-side model.
  */
 import { describeImageHuggingFace } from './huggingface';
+import { CoverObject } from '@/types';
 
-export async function describeImage(imageUrl: string): Promise<string> {
+export async function describeImage(imageUrl: string, onStatus?: (status: string) => void): Promise<string> {
   if (typeof window === 'undefined') return "visual artwork";
 
   const apiKey = process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || '';
@@ -74,95 +109,174 @@ export async function describeImage(imageUrl: string): Promise<string> {
   }
 
   try {
-    const { pipeline, env, RawImage } = await import('@huggingface/transformers');
-    env.allowLocalModels = false;
+    const transformers = await getTransformers(onStatus);
+    if (!transformers) return "";
+    const { pipeline, RawImage } = transformers;
 
     if (!visionPipeline) {
-      console.log("[Neural Engine] Initializing Vision Model (vit-gpt2)...");
-      const device = await getBestDevice();
-      visionPipeline = await pipeline('image-to-text', 'Xenova/vit-gpt2-image-captioning', { device });
+      if (!visionInitializationPromise) {
+        visionInitializationPromise = (async () => {
+          const device = await getBestDevice();
+          onStatus?.(`INITIALIZING ADVANCED VISION (Florence-2)...`);
+          remoteLog(`Initializing Vision Model (Florence-2)...`, 'INFO');
+          // Switch back to 'image-to-text' as 'image-text-to-text' is not yet standard in this build
+          const p = await pipeline('image-to-text', 'onnx-community/Florence-2-base-ft', { 
+            device,
+            dtype: 'fp32' 
+          });
+          visionPipeline = p;
+          return p;
+        })();
+      }
+      await visionInitializationPromise;
     }
 
+    onStatus?.(`PERFORMING DEEP VISUAL SCAN...`);
     const image = await RawImage.read(imageUrl);
-    const output = await visionPipeline(image);
-    if (!output || !output[0] || !output[0].generated_text) return "visual artwork";
+    
+    // Florence-2 uses specific prompts for different tasks. 
+    // <DETAILED_CAPTION> is perfect for the "Nirvana-style" literal descriptions.
+    const output = await visionPipeline(image, { 
+      prompt: '<DETAILED_CAPTION>',
+      max_new_tokens: 128 
+    });
+    
+    if (!output || !output[0] || !output[0].generated_text) return "";
 
-    return output[0].generated_text;
+    // Clean up the Florence-2 specific tags from the output
+    return output[0].generated_text.replace('<DETAILED_CAPTION>', '').trim();
   } catch (error: any) {
     console.error("Neural Engine (Vision) Error:", error?.message || error);
-    return "visual artwork";
+    return "";
   }
+}
+
+/**
+ * Remote Logger: Sends client logs to backend console for debugging.
+ */
+async function remoteLog(message: string, level: 'INFO' | 'WARN' | 'ERROR' = 'INFO', metadata?: any) {
+  try {
+    fetch('/api/diag/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, level, metadata })
+    }).catch(() => {}); // Fire and forget
+  } catch (e) {}
 }
 
 /**
  * Local Visual Analyzer (Section 11)
  * Zero-Cost, API-Free Indexing using CLIP and Browser Canvas.
  */
-export async function analyzeImageLocally(imageUrl: string, albumName: string, artistName: string): Promise<any> {
+export async function analyzeImageLocally(
+  imageUrl: string, 
+  albumName: string, 
+  artistName: string,
+  onStatus?: (status: string) => void
+): Promise<any> {
   if (typeof window === 'undefined') return null;
 
-  try {
-    const { pipeline, env, RawImage } = await import('@huggingface/transformers');
-    
-    // Configure environment for browser-side performance
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
+  let attempts = 0;
+  const maxAttempts = 3;
 
-    if (!classifierPipeline) {
-      const device = await getBestDevice();
-      console.log(`[Neural Engine] Initializing CLIP Model (quantized) on ${device}...`);
-      // Use quantized model for 4x smaller download and faster inference
-      classifierPipeline = await pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32', { device });
+  while (attempts < maxAttempts) {
+    try {
+      const transformers = await getTransformers(onStatus);
+      if (!transformers) return null;
+      const { pipeline, RawImage } = transformers;
+
+      if (!classifierPipeline) {
+        if (!classifierInitializationPromise) {
+          classifierInitializationPromise = (async () => {
+            const device = await getBestDevice();
+            onStatus?.(`LOADING NEURAL ARCHIVE...`);
+            remoteLog(`Initializing CLIP Model on ${device}...`, 'INFO');
+            const p = await pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32', { 
+              device,
+              dtype: 'fp32'
+            });
+            classifierPipeline = p;
+            return p;
+          })();
+        }
+        await classifierInitializationPromise;
+      }
+
+      onStatus?.(`ANALYZING ARTWORK...`);
+      remoteLog(`Analyzing "${albumName}" by ${artistName} (Attempt ${attempts + 1})...`, 'INFO');
+      
+      // 1. Fetch image with timeout
+      const imagePromise = RawImage.read(imageUrl);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Image fetch timeout")), 15000));
+      const image = await Promise.race([imagePromise, timeoutPromise]) as any;
+
+      // 2. Define tags to classify
+      const styleOptions = ['photograph', 'illustration', 'abstract', '3d render', 'minimalist', 'vibrant painting'];
+      const compositionOptions = ['centered subject', 'scattered elements', 'close-up portrait', 'wide landscape', 'symmetrical'];
+      const moodOptions = ['happy', 'melancholic', 'aggressive', 'peaceful', 'mysterious', 'energetic'];
+      const objectOptions = ['a person', 'a group of people', 'nature and landscapes', 'a city with buildings', 'animals', 'cars and vehicles', 'text and typography', 'vibrant colors and patterns', 'nothing specific'];
+
+      // 3. Run inferences SEQUENTIALLY to prevent GPU/Memory deadlock
+      onStatus?.(`DECODING AESTHETICS...`);
+      const styleResults = await classifierPipeline(image, styleOptions);
+      const compResults = await classifierPipeline(image, compositionOptions);
+      const moodResults = await classifierPipeline(image, moodOptions);
+      const objectResults = await classifierPipeline(image, objectOptions);
+      const basicVisuals = await analyzeVisuals(imageUrl) as any;
+
+      const bestStyle = styleResults[0].label;
+      const bestComp = compResults[0].label.split(' ')[0]; 
+      const bestMood = moodResults[0].label;
+      const bestObject = objectResults[0].label;
+
+      // Map style
+      let style: 'photograph' | 'illustration' | 'abstract' = 'photograph';
+      if (bestStyle === 'illustration' || bestStyle === 'vibrant painting') style = 'illustration';
+      else if (bestStyle === 'abstract' || bestStyle === 'minimalist') style = 'abstract';
+
+      // Map composition
+      let composition: 'centered' | 'scattered' | 'portrait' = 'centered';
+      if (bestComp === 'scattered') composition = 'scattered';
+      else if (bestComp === 'close-up') composition = 'portrait';
+
+      const tags = {
+        colors: basicVisuals.colors || ['unknown'],
+        brightness: basicVisuals.brightness || 'bright',
+        style: style,
+        objects: [bestObject],
+        composition: composition,
+        mood: bestMood
+      };
+
+      // Use Florence-2 for a state-of-the-art literal description
+      const richDescription = await describeImage(imageUrl, onStatus);
+      
+      // Construct a more literal, content-focused description
+      const visualContent = richDescription ? richDescription.trim() : `An image of ${bestObject}`;
+      // Ensure it ends with a period if it doesn't have one
+      const punctuation = visualContent.endsWith('.') ? '' : '.';
+      
+      const description = `${visualContent}${punctuation} This ${bestStyle} cover has a ${bestMood} mood and ${composition} layout.`;
+
+      remoteLog(`Successfully indexed "${albumName}"`, 'INFO');      return { tags, description, isLocal: true };
+    } catch (e: any) {
+      attempts++;
+      remoteLog(`Attempt ${attempts} failed for "${albumName}": ${e.message}`, 'WARN');
+      
+      if (e.message?.includes('aborted') || e.message?.includes('gpu') || e.message?.includes('webgpu') || e.message?.includes('timeout')) {
+        forceWasm = true;
+        classifierPipeline = null; 
+      }
+
+      if (attempts >= maxAttempts) {
+        remoteLog(`Critical Failure after ${maxAttempts} attempts for "${albumName}"`, 'ERROR');
+        return null;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempts) * 500));
     }
-
-    console.log(`[Local Indexing] Fetching & Analyzing "${albumName}"...`);
-    
-    // 1. Fetch image robustly
-    const image = await RawImage.read(imageUrl);
-
-    // 2. Define tags to classify
-    const styleOptions = ['photograph', 'illustration', 'abstract', '3d render', 'minimalist', 'vibrant painting'];
-    const compositionOptions = ['centered subject', 'scattered elements', 'close-up portrait', 'wide landscape', 'symmetrical'];
-    const moodOptions = ['happy', 'melancholic', 'aggressive', 'peaceful', 'mysterious', 'energetic'];
-
-    // 3. Run classifications and basic analysis
-    const [styleResults, compResults, moodResults, basicVisuals] = await Promise.all([
-      classifierPipeline(image, styleOptions),
-      classifierPipeline(image, compositionOptions),
-      classifierPipeline(image, moodOptions),
-      analyzeVisuals(imageUrl) as Promise<any>
-    ]);
-
-    const bestStyle = styleResults[0].label;
-    const bestComp = compResults[0].label.split(' ')[0]; 
-    const bestMood = moodResults[0].label;
-
-    // Map style
-    let style: 'photograph' | 'illustration' | 'abstract' = 'photograph';
-    if (bestStyle === 'illustration' || bestStyle === 'vibrant painting') style = 'illustration';
-    else if (bestStyle === 'abstract' || bestStyle === 'minimalist') style = 'abstract';
-
-    // Map composition
-    let composition: 'centered' | 'scattered' | 'portrait' = 'centered';
-    if (bestComp === 'scattered') composition = 'scattered';
-    else if (bestComp === 'close-up') composition = 'portrait';
-
-    const tags = {
-      colors: basicVisuals.colors || ['unknown'],
-      brightness: basicVisuals.brightness || 'bright',
-      style: style,
-      objects: [bestStyle], // Simple fallback
-      composition: composition,
-      mood: bestMood
-    };
-
-    const description = `Album cover for "${albumName}" by ${artistName}. It features a ${bestStyle} with a ${bestMood} mood and ${composition} composition. Local neural fingerprints confirm high aesthetic confidence.`;
-
-    return { tags, description, isLocal: true };
-  } catch (e: any) {
-    console.error("[Local Indexing] Critical Failure:", e.message);
-    return null;
   }
+  return null;
 }
 
 /**
@@ -179,21 +293,31 @@ export async function analyzeVisuals(imageUrl: string) {
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve({ brightness: 'bright', colors: ['unknown'] });
 
-      canvas.width = 50; 
-      canvas.height = 50;
-      ctx.drawImage(img, 0, 0, 50, 50);
+      // Use small canvas for performance
+      canvas.width = 10; 
+      canvas.height = 10;
+      ctx.drawImage(img, 0, 0, 10, 10);
       
-      const data = ctx.getImageData(0, 0, 50, 50).data;
+      const data = ctx.getImageData(0, 0, 10, 10).data;
+      let r = 0, g = 0, b = 0;
       let totalBrightness = 0;
       
       for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i+1];
+        b += data[i+2];
         totalBrightness += (data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114);
       }
       
-      const avgBrightness = totalBrightness / (data.length / 4);
+      const count = data.length / 4;
+      const avgR = Math.round(r / count);
+      const avgG = Math.round(g / count);
+      const avgB = Math.round(b / count);
+      const avgBrightness = totalBrightness / count;
+
       resolve({
         brightness: avgBrightness < 120 ? 'dark' : 'bright',
-        colors: ['unknown']
+        colors: [`rgb(${avgR},${avgG},${avgB})`]
       });
     };
     img.onerror = () => resolve({ brightness: 'bright', colors: ['unknown'] });

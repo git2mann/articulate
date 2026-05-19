@@ -35,14 +35,16 @@ export async function POST(req: Request) {
 
     let data;
 
-    // 1. Try Groq Vision (Faster, better rate limits)
+    // 1. Groq Vision (Primary Remote) with strict rate limiting
     if (GROQ_API_KEY) {
-      let attempts = 0;
-      const maxAttempts = 2;
+      if (!(global as any).groqVisionTimestamps) (global as any).groqVisionTimestamps = [];
+      const now = Date.now();
+      (global as any).groqVisionTimestamps = (global as any).groqVisionTimestamps.filter((t: number) => now - t < 60000);
       
-      while (attempts < maxAttempts && !data) {
+      if ((global as any).groqVisionTimestamps.length < 30 && !(global as any).groqVisionBlockedUntil || now > (global as any).groqVisionBlockedUntil) {
         try {
-          console.log(`[Groq Vision] Indexing "${album_name}" (Attempt ${attempts + 1})...`);
+          (global as any).groqVisionTimestamps.push(now);
+          console.log(`[Groq Vision] Indexing "${album_name}" ...`);
           const groqResp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -73,57 +75,45 @@ export async function POST(req: Request) {
             data = JSON.parse(groqData.choices[0].message.content);
             console.log(`[Groq Vision] Success indexing "${album_name}"`);
           } else if (groqResp.status === 429) {
-            const errJson = await groqResp.json();
-            // Wait the requested time + a small buffer
-            const waitMs = (parseFloat(errJson.error?.message?.match(/(\d+\.?\d*)s/)?.[1] || "1") * 1000) + 500;
-            console.warn(`[Groq 429] Rate limit hit. Waiting ${waitMs}ms...`);
-            await new Promise(r => setTimeout(r, waitMs));
-            attempts++;
-          } else {
-            const errText = await groqResp.text();
-            console.warn(`[Groq Vision Error] ${errText}`);
-            break; 
+            (global as any).groqVisionBlockedUntil = Date.now() + 60000;
+            console.warn(`[Groq 429] Rate limit hit. Blocking Groq Vision for 60s.`);
           }
         } catch (e: any) {
           console.warn(`[Groq Vision failed] ${e.message}.`);
-          attempts++;
         }
       }
     }
 
-    // 2. Fallback to Gemini
-    if (!data && GEMINI_API_KEY) {
-      if (global.geminiQuotaExceededUntil && Date.now() < global.geminiQuotaExceededUntil) {
-        console.log(`[Gemini Vision] Skipping fallback indexing for "${album_name}" due to active quota block.`);
-      } else {
-        try {
-          console.log(`[Gemini Vision] Indexing "${album_name}" as fallback...`);
-          const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-          const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.0-flash",
-            safetySettings: [
-              { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
-          });
+    // 2. Ollama Vision (High-Performance Local Fallback)
+    // Runs on your M1 Pro using Llama-3-Vision or Moondream
+    if (!data) {
+      try {
+        const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434/api/generate";
+        const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llava";
 
-          const result = await model.generateContent([
-            prompt,
-            { inlineData: { data: base64Image, mimeType: "image/jpeg" } }
-          ]);
-          
-          const text = result.response.text();
-          const cleanJson = text.replace(/```json|```/g, "").trim();
-          data = JSON.parse(cleanJson);
-        } catch (e: any) {
-          if (e.message?.includes("429") || e.message?.includes("quota")) {
-            console.warn(`[Gemini Quota] Detected limit in Indexing. Blocking for 60s.`);
-            (global as any).geminiQuotaExceededUntil = Date.now() + 60000;
-          }
-          console.warn(`[Gemini Vision failed] ${e.message}`);
+        console.log(`[Ollama Vision] Attempting local inference for "${album_name}" ...`);
+        const ollamaResp = await fetch(OLLAMA_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: OLLAMA_MODEL,
+            prompt: prompt,
+            images: [base64Image],
+            stream: false,
+            format: "json"
+          })
+        });
+
+        if (ollamaResp.ok) {
+          const ollamaData = await ollamaResp.json();
+          // Extract JSON if the model includes reasoning or markers
+          const rawResponse = ollamaData.response;
+          const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+          data = JSON.parse(jsonMatch ? jsonMatch[0] : rawResponse);
+          console.log(`[Ollama Vision] Success indexing "${album_name}"`);
         }
+      } catch (e: any) {
+        console.warn(`[Ollama Vision failed] Ensure Ollama is running locally with ${process.env.OLLAMA_MODEL || 'llama3-vision'}.`);
       }
     }
 
